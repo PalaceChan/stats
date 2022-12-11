@@ -1,0 +1,69 @@
+:PROPERTIES:
+#+TITLE: stats
+#+PROPERTY: header-args:R :session *R:stats:* :eval never-export :exports code
+#+PROPERTY: header-args:python :session *Python[stats]* :eval never-export :exports code
+#+EXPORT_EXCLUDE_TAGS: noexport
+#+OPTIONS: num:nil
+#+OPTIONS: ^:nil
+#+OPTIONS: tex:imagemagick
+:END:
+* appendix
+packages
+#+begin_src R
+  install.packages(c('ggplot2', 'data.table', 'curl'))
+#+end_src
+
+* classical linear regression
+** diagnostics
+https://grodri.github.io/glms/notes/c2.pdf (page 50)
+recall that $\hat{\beta} = (X'X)^{-1} X'y$ so $\hat{y} = X ((X'X)^{-1} X'y) = (X (X'X)^{-1} X')y = Hy$ so fitted values have expectation $u$ and var $H \sigma^2$, residuals thus have expectation 0 and var $(I-H)\sigma^2$ so we can standardize residuals via $s_i = \frac{r_i}{\hat{\sigma} \sqrt(1 - h_{ii})}$
+because the i-th ob can be an outlier and affect the estimate $\hat{\sigma^2}$ the jack knife standardized residuals use $\hat{\sigma}_{(i)}$ which is estimated without the i-th ob.
+
+QQ-plot of jack knifed residuals can help diagnostics (there is a normality test by Filliben based on QQ plot correlation)
+
+to note is that if one fitted $\mu_i = x_i' \beta + \gamma z_i$ with $z_i$ an indicator var for the i-th ob then $H_0: \gamma = 0$ is a formal test of whether the ob follows the same model as the rest of the data, the t-test statistic for it ($\hat{\gamma} / \sqrt(\text{var}(\hat{\gamma}))$) turns out is the same as the jack knifed residual
+
+also $h_{ii}$ in the hat is called the /leverage/ (potential influence) because the variance of the i-th residual is $(1 - h_{ii}) \sigma^2$ which approaches 0 as $h_{ii}$ approaches 1, meaning forcing the fitted value close to the observed. trace of $H$ is $p$ (number of parameters) so average leverage is $p / n$ so as a reference point exceeding twice that can draw scrutiny.
+
+however, fitted value could simply be close to observed so a better measure of influence (actual influence vs potential) is /cook's distance/ (measures the extent to which parameters would change if one omitted the i-th ob), so it is exactly the standardized difference between $\hat{\beta}_{(i)}$ and $\hat{\beta}$
+
+$$D_i = (\hat{\beta}_{(i)} - \hat{\beta})' \hat{\text{var}}^{-1}(\hat{\beta}) ((\hat{\beta}_{(i)} - \hat{\beta})) / p$$
+
+(equivalent to $||\hat{y}_{(i)} - \hat{y}||$ and also can be derived from standardized residuals and leverage via $s_i^2\frac{h_{ii}}{(1-h_{ii})p}$). It's formulation is exactly wald statistic of the $H_0$ that $\beta$ is $\hat{\beta}_{(i)}$
+
+in R: ~residuals(); rstandard(); rstudent(); hatvalues(); cooks.distance()~
+** transformations
+atkinson score is a quick way to test for indication of potential need to transform response (add auxiliary variable $y_i (\log(y_i / \tilde{y}) - 1)$ where $\tilde{y}$ is the geometric mean. One minus the coef (if signif) would be a preliminary suggested box cox power
+similar to a procedure by box and tidwell for the predictor side of things (to test for a power transform) - fit the auxiliary variable $x_i \log(x_i)$ to a model already with $x_i$ and (if signif) a preliminary power estimate would be $\hat{\gamma} / \hat{\beta} +1$ where $\beta$ is the original coef of $x$ in the model sans the auxiliary term and $gamma$ that of the auxiliary term
+
+in R: ~MASS::boxcox~
+** likelihood ratio
+https://grodri.github.io/glms/notes/c2.pdf (page 11)
+
+generally the difference in deviance $D(X_1) - D(X_1 + X_2)$ which for linear regression turns out to be incremental reduction in RSS:
+(in models for normally distributed data the deviance is the rss)
+
+$$ -2 \log \lambda = \frac{\text{RSS}(X_1) - \text{RSS}(X_1 + X_2)}{\sigma^2}$$
+
+(chi-squared with $p_2$ d.f.)  though analogous to wald test when $\sigma^2$ is estimated can divide by $p_2$ for the F analogue which is:
+
+$$F = \frac{(\text{RSS}(X1) - \text{RSS}(X_1 + X_2))/p_2}{\text{RSS}(X_1+X_2)/(n-p)}$$
+
+with $p_2$ and $n-p$ d.f. which is the reduction in RSS per degree of freedom spent over the noise in the model ($\hat{\sigma^2}$ estimated from the larger one)
+
+for linear models this is identical to the wald test
+* general linear models
+** diagnostics
+https://bookdown.org/ltupper/340f21_notes/deviance-and-residuals.html
+https://grodri.github.io/glms/notes/c3.pdf (page 47) also includes mention of studentized in the case of logit models or that one can jack-knife by starting from final iteration of the IRLS
+https://www.jstor.org/stable/2240841 (pregibon 1981 referenced above too)
+
+pearson residuals (usual difference in observed minus fitted standardized by estimated error of fitted i.e. standardized residuals in classical lm) - in grouped data normally distributed so one can sum of squares them and compare to chi-squared
+
+* wald test
+https://grodri.github.io/glms/notes/c2.pdf (page 10)
+a joint t-test, whereas $$t = \frac{\hat{\beta}_j}{\sqrt(\text{var}(\hat{\beta}_j))}$$ with $n - p$ d.f. the wald test takes multiple betas and is  $$W = \hat{\beta}' \text{var}^{-1}(\hat{\beta}) \hat{\beta}$$
+things to note:
+case of single coef it reduces to the square of the t-test
+because coefs are multivariate normal, the quadratic form is a chi-squared $p$ d.f.  (if $\sigma^2$ is known) but otherwise $W/p$ is F with $p$ and $n-p$ d.f.
+this is exactly analogous to z-score normal vs student t as chi-squared with one d.f. is square of a normal and F with one and $v$ d.f. is the square of a t with $v$ d.f.

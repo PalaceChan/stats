@@ -1,0 +1,6 @@
+( obs <- cuse$Y)
+( p <- fitted(additive))
+( fit <- cbind(p * cuse$n, (1-p) * cuse$n))
+( sgn <- sign(cuse$using/cuse$n - p))
+( pr2 <- sqrt((  (obs-fit)^2/fit   ) %*% c(1,1)) * sgn)
+( dr2 <- sqrt(( 2*obs*log(obs/fit) ) %*% c(1,1)) * sgn)
