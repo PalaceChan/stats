@@ -7,13 +7,37 @@
 #+OPTIONS: ^:nil
 #+OPTIONS: tex:imagemagick
 :END:
-* appendix
+* appendix & misc
 packages
 #+begin_src R
   install.packages(c('ggplot2', 'data.table', 'curl'))
 #+end_src
 
+useful links:
+https://www.stat.cmu.edu/~larry/=sml/ (https://www.stat.cmu.edu/%7Elarry/=sml/DAGs.pdf came up when digging into strong ignorability / causal inference in chapter 9  of armm)
+may want to read the book of why: https://www.amazon.com/Book-Why-Science-Cause-Effect/dp/1541698967
+the R journal https://journal.r-project.org/
+
+may want to read: "Statistical Models in S" as always mentioned in the R docs
+work through the below after armm:
+https://methodenlehre.github.io/intro-to-rstats/index.html (came up when browsing post armm chapter 12 on lmer)
+Kutner et al. Applied Linear Statistical Models (anova book recommendation from https://stats.stackexchange.com/a/20455/6355 on anova)
+* covariance
+https://stats.stackexchange.com/questions/140080/why-does-inversion-of-a-covariance-matrix-yield-partial-correlations-between-ran
+
 * classical linear regression
+** confounding / omitted variables
+page 170 darm gelman text presents argument:
+
+confounding covariate is one associated with both treatment and outcome. to see, suppose the models full: $y_i = \beta_0 + \beta_1 T_i + \beta_2 x_i + \epsilon_i$ then omit $x_i$ to get $y_i = \beta_0^* + \beta_1^* T_i + \epsilon_i$. Consider $x_i = \gamma_0 + \gamma_1 T_i + \nu_i$
+plugging that into the original correct equation one gets $y_i = (\beta_0 + \beta_2 \gamma_0) + (\beta_1 + \beta_2 \gamma_1) T_i + (\epsilon_i + \beta_2 \nu_i)$ so $\beta_1^* = \beta_1 + \beta_2^* \gamma_1$
+so for the bias in $\beta_1^*$ to be present  both $\beta_2^*$ must be non-zero (the omitted variable is associated with the outcome) and $\gamma_1$ must be non-zero (the omitted variable is associated with the treatment)
+
+page 200 darm gelman text:
+
+in a causal inference, under randomization one has $y_i ~ \beta_0 + \theta T + \epsilon$ so $\theta$ is the difference of means between treatment and control (and captures the effect of $T$) - but if we have to include a confounding covariate to preserve ignorability we get
+$y_i = m(x) + \theta + \epsilon$ for treatment ($m(x)$ the regression) and $y_i = m(x) + \epsilon$ for control and the difference of averages now results in $\hat{\theta} = \bar{y_1} - \bar{y_0} - \sum_i \beta_i (\bar{x}_{1,i} \bar{x}_{0,i})$ for each of the confounding covariates.
+the observation is that unless the covariate distribution is /well balanced/ across the groups the extra terms will not cancel and will thwart the estimate of the effect size by the degree of difference in the distributions
 ** diagnostics
 https://grodri.github.io/glms/notes/c2.pdf (page 50)
 recall that $\hat{\beta} = (X'X)^{-1} X'y$ so $\hat{y} = X ((X'X)^{-1} X'y) = (X (X'X)^{-1} X')y = Hy$ so fitted values have expectation $u$ and var $H \sigma^2$, residuals thus have expectation 0 and var $(I-H)\sigma^2$ so we can standardize residuals via $s_i = \frac{r_i}{\hat{\sigma} \sqrt(1 - h_{ii})}$
