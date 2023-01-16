@@ -1,0 +1,253 @@
+:PROPERTIES:
+#+TITLE: armm
+#+PROPERTY: header-args:R :session *R:stats* :eval never-export :exports code
+#+PROPERTY: header-args:python :session *Python[stats]* :eval never-export :exports code
+#+EXPORT_EXCLUDE_TAGS: noexport
+#+OPTIONS: num:nil
+#+OPTIONS: ^:nil
+#+OPTIONS: toc:nil
+#+OPTIONS: tex:imagemagick
+:END:
+
+* setup
+[[http://www.stat.columbia.edu/~gelman/arm/][website]]
+
+#+name: r setup
+#+begin_src R
+  ## install.packages('arm')
+  ## install.packages('ROCR')
+  ## install.packages('haven') # to read stata dta files or install.packages('foreign') and use read.dta
+  ## install.packages('lmtest') # for lrtest
+  ## install.packages('GGally') # ggpairs
+  ## install.packages('ggeffects') # ggpredict
+  ## install.packages('ordinal') # clm alternative to MASS::polr
+  library(ggplot2)
+  library(data.table)
+  setwd('~/development/armm')
+#+end_src
+* chapter 6
+Deviance of model given by
+
+$$D(y, \hat{u}) = 2 \left( \log(p(y | \hat{\theta}_s)) - \log(p(y | \hat{\theta}_p))\right)$$
+
+where $\hat{u}$ is the estimate, the parameters are the saturated one (as many params as obs so perfect fit) and the proposed one. So it is a diff in log likelihood between the saturated and the proposed
+
+the default residuals are the deviance residuals which are the square roots of unit deviances (the sum of their squares is the reported residual deviance)
+
+good references:
+https://www.datascienceblog.net/post/machine-learning/interpreting_generalized_linear_models/
+https://bookdown.org/ltupper/340f21_notes/deviance-and-residuals.html
+
+** 6.10.1
+couples and women_alone are indicators, when both zero it is the control group. bs_hiv is baseline hiv negative or positive, bupacts is baseline acts and fupacts is the follow-up acts y
+no obvious "exposure" / "offset" to use but idea is $y_i \sim \text{Poiss}(\theta_i)$ with $\theta_i = e^{X_i \beta}$
+
+~fitted(m)~ is the value of the $\theta_i$ given the coefs (so same as ~predict(m, ... type='response')~
+~fitted(m) - y~ is the same as ~residuals(m, type='response')~
+
+#+begin_src R
+  rb <- data.table(haven::read_dta(url('http://www.stat.columbia.edu/~gelman/arm/examples/risky.behavior/risky_behaviors.dta')))
+  ## attributes(rb$fupacts)
+
+  m0 <- rb[, glm(fupacts ~ couples + women_alone, family = poisson)]
+  m0$null.deviance - m0$deviance # >> 2 so predictive
+
+  ## if Poiss model is true, sqrt(mean) should be the std dev
+  z0 <- residuals(m0, type='pearson') # (y_i - \hat{y}_i) / sqrt(\hat{y}_i)
+  ## z0 <- (rb$fupacts - m0$fitted.values) / sd(m0$fitted.values) # this is wrong...
+
+  sum(z0^2) # is chi-square n-k df (which has mean n-k) so calc overdispersion factor
+  sum(z0^2)/m0$df.residual # 44
+  pchisq(sum(z0^2), m0$df.residual) # 1
+  summary(rb[, glm(fupacts ~ couples + women_alone, family = quasipoisson)])
+
+  m1 <- rb[, glm(fupacts ~ ., family = poisson, data = .SD)]
+  m0$deviance - m1$deviance # ~2.7k
+
+  z1 <- residuals(m1, type = "pearson")
+  sum(z1^2)/m1$df.residual # 30
+  pchisq(sum(z1^2), m1$df.residual) # 1
+
+  m2 <- rb[, glm(fupacts ~ ., family = quasipoisson, data = .SD)]
+  summary(m2)$dispersion #30
+#+end_src
+** 6.10.2
+https://marissabarlaz.github.io/portfolio/ols/
+for likelihood ratio testing: https://bookdown.org/ltupper/340f21_notes/glm-inference-tests.html#likelihood-ratio-tests
+
+#+begin_src R
+  x <- data.table(haven::read_dta(url('http://www.stat.columbia.edu/~gelman/arm/examples/nes/nes5200_processed_voters_realideo.dta')))
+  lapply(x, function(y) attributes(y)$label)
+  y <- x[ ,.(partyid7, ideo_feel, ideo7, ideo, age, gender, race, religion, educ1)]
+  y[, partyid7 := factor(partyid7, levels = attributes(x$partyid7)$labels[2:8], labels = names(attributes(x$partyid7)$labels[2:8]), ordered = T)]
+  y[, ideo7 := factor(ideo7, levels = attributes(x$ideo7)$labels[2:8], labels = names(attributes(x$ideo7)$labels[2:8]))]
+  y[, gender := factor(gender, levels = attributes(x$gender)$labels[2:3], labels = names(attributes(x$gender)$labels[2:3]))]
+  y[, race := factor(race, levels = attributes(x$race)$labels[1:6], labels = names(attributes(x$race)$labels[1:6]))]
+  y[, religion := factor(religion, levels = attributes(x$religion)$labels[2:5], labels = names(attributes(x$religion)$labels[2:5]))]
+  y[, educ1 := factor(educ1, levels = attributes(x$educ1)$labels[2:5], labels = names(attributes(x$educ1)$labels[2:5]))]
+  m <- y[, MASS::polr(partyid7 ~ ideo7 + ideo_feel + race + religion + educ1, Hess = T)]
+  # m2 <- y[, ordinal::clm(partyid7 ~ ideo7 + ideo_feel + race + religion + educ1)]
+#+end_src
+* chapter 9 (causal inference)
+https://www.stat.cmu.edu/~larry/=sml/Causation.pdf
+https://stats.stackexchange.com/questions/599833/control-for-post-treatment-variables-vs-omitted-variable-bias
+https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/
+
+* chapter 10
+** issues with imbalance in confounding covariate distributions
+page 200:
+
+in a causal inference, under randomization one has $y_i ~ \beta_0 + \theta T + \epsilon$ so $\theta$ is the difference of means between treatment and control (and captures the effect of $T$) - but if we have to include a confounding covariate to preserve ignorability we get
+$y_i = m(x) + \theta + \epsilon$ for treatment ($m(x)$ the regression) and $y_i = m(x) + \epsilon$ for control and the difference of averages now results in $\hat{\theta} = \bar{y_1} - \bar{y_0} - \sum_i \beta_i (\bar{x}_{1,i} \bar{x}_{0,i})$ for each of the confounding covariates.
+the observation is that unless the covariate distribution is /well balanced/ across the groups the extra terms will not cancel and will thwart the estimate of the effect size by the degree of difference in the distributions (and also the degree of model mis-specification)
+
+from:
+http://econometricsense.blogspot.com/2011/01/instrumental-variables-ivs.html
+** matching
+package in R: https://cran.r-project.org/web/packages/MatchIt/vignettes/MatchIt.html
+few things one can do with propensity scores besides use them for matching is to sub-classify by buckets of them to get effect estimates by level (and could weighted average those) or to use them as weights and use the full data (so e.g. weight of $1/p_i$ for treated and $1/(1-p_i)$ on control.
+those weights say "if you are treated but unlikely to have been, emphasize more" or "if you are in control but were unlikely to be in control, emphasize more" with the aim of morphing the data-set to look more like a true random experiment.
+** ivs
+in book motivation for this is introduced when a confounding covariate is not available so one has, e.g. $u \rightarrow x \rightarrow y \leftarrow u$ but $u$ is missing in the data and not being able to include it prevents estimation of $x$ effect on $y$. The idea is to
+find a "proxy" $z$ that is correlated with $x$ and $y$ (but only via $x$) and not correlated to $u$ (https://www.youtube.com/watch?v=5h_W75p0ggA)
+
+in text pg 219 he gets the iv estimator of the effect of instrument /encouraged/ (for treatment /watched/) on outcome /y/ by finding $\beta$ in the regression $\text{watched} ~ \text{encouraged}$ and $\gamma$ in the regression $y ~ \text{encouraged}$ and dividing them:
+$\gamma / \beta$. This makes sense because suppose one has $y ~ \beta x + \epsilon$ and instrument $z$, then note that $s_{yz} = \beta s_{xz} + s_{\epsilon z}$ where the latter is zero ($z$ is an IV) and $s_{xz} \neq 0$ (same reason, $z$ an IV) so that
+$\beta = s_{yz} / s_{xz}$ in the two regressions we have $\gamma = s_{yz} / s_{zz}$ and $\beta = s_{xz} / s_{zz}$ so the ratio $\gamma / \beta$ is $s_{yz} / s_{xz}$
+
+also, the two stage regression is intuitive/equivalent to above because from $x ~ z$ we get $\hat{x} = s_{xz} / s_{zz} z$ and then doing $y ~ \hat{x}$ gives us coeff $\text{cov}(y, \hat{x}) / \text{cov}(\hat{x}, \hat{x})$ but plugging in the expression for $\hat{x}$
+this gives us:
+
+$$\frac{\frac{s_{xz}}{s_zz} s_{yz}}{\frac{s_xz}{s_zz} \frac{s_xz}{s_zz} s_{zz}}$$
+
+which simplifies to $s_{yz} / s_{xz}$ as well
+
+another useful way to think about an instrumental variable $z$ for a treatment $T$ is via the two equations:
+
+$$T = \alpha z + \epsilon$$
+and
+$$y = \beta T + \nu$$
+
+taking conditional expectations with regards to $z$ (regressing on $z$) yields
+$$\mathbb{E}(y | z) = \beta \mathbb{E}(T | z) + \mathbb{E}(\nu | z)$$
+
+the assumption required of an IV is that it affect $y$ only through its effect on $T$, implying $\mathbb{E}(\nu | z) = 0$ which then implies we can solve for $\beta$ by dividing $\mathbb{E}(y | z)$ by $\mathbb{E}(T | z)$
+
+the two stage regression is in package =sem= (structurual equation modeling) because IVs show up there. In structural equation one has endogenous variables as regressors, e.g.: $y_1 = f(x_1, y_2) + \epsilon_1$ and $y_2 = f(x_2, y_1) + \epsilon_2$.
+There one has $\text{Cov}(y_2, \epsilon_1) != 0$ (increase $\epsilon_1$ increases $y_1$ but since it is a predictor for $y_2$ it increases $y_2$. Here, to systematically build an IV (correlated with the outcome, but not the error) one does a first stage pass regressions:
+$z_1 = y_1 ~ f(x_1, x_2) + \epsilon_1$ and $z_2 = y_2 ~ f(x_1, x_2) + \epsilon_2$ where $z_i$ (the IVs) will be uncorrelated to both $\epislon_i$ and then one can use those in the original equations in lieue of the corresponding $y_i$ and estimate a second pass regression.
+
+https://engineering.purdue.edu/~flm/CE615_files/3SLS-lecture.pdf
+^ one can also conduct /indirect least squares/ by plugging in one equation into the other to get rid of the problem and then using regular OLS on that. The issue is while that is fine for prediction only, for inference one cares about the original parameter estimates which cannot always be unraveled from that regression
+* chapter 12
+"bayesian inference" (to understand theoretical background behind multilevel models) references:
+Box and Tiao: https://www.amazon.com/Bayesian-Inference-Statistical-Analysis-George/dp/0471574287
+lmer package (lme4 https://cran.r-project.org/doc/Rnews/Rnews_2005-1.pdf)
+
+intraclass correlation (pg 258, in the random effects modeling framework the icc is the correlation of two observations in the same group)
+https://en.wikipedia.org/wiki/Intraclass_correlation
+
+** general high level intuition for the random intercept vs the classical least squares estimate with dummies
+the "fixed effect" estimate of intercepts per group is "low information" in small sample size groups as the estimate is just the average $y$ in that group. One way to see this last bit is that indicator variables are orthogonal to each other, therefore the precision matrix $(X^tX)^{-1}$
+will have zero off-diagonal elements (zero partial correlations) and the diagonal elements will be of the form $1/\text{cov}(r_i, r_j)$ but $r_i$ is the same as $x_i$ because of the orthogonality so we just get the standard estimates $s_{xy} / s_{xx}$ but $s_{xx}$ for an indicator
+is just the count and $s_{xy}$ is just the partial sum and so that is indeed the mean of $y$ in that group. The standard error of this mean is $\sqrt{N}$ for $N$ the obs count. If we instead model the intercept for the group by belonging to a distribution $N(\mu_\alpha, \sigma_\alpha^2)$
+and the variance $\sigma_\alpha$ is at least $1/N$ the overall residual variance then there is more information in it to estimate a group of size smaller than $N$ than the fixed effect estimate in that group. Thus when the between group variance is small, this limit $N$ would get bigger
+and the estimate would "pool more" and shrink toward the mean $\mu_\alpha$ (or $\hat{\alpha}$ if we have group level predictors) which is intuitive as it implies the groups are not very different
+(on the other hand as $\sigma_\alpha^2$ grows $N$ goes toward 0 meaning the groups are so different that we "fall back" to classical regression estimates)
+
+therefore, the multi-level estimate is a "smooth" in-between/trade-off between the classical single intercept or multi intercept "fixed effect" models, in-betweenness determined statistically from the between group variance
+
+cool thing to note here (pg 268) is that if one introduces good group-level predictors (useless in the classical regression with dummies because they are group level so zero variance within-group) then one can reduce $\sigma_\alpha^2$ (smaller group-level regression residual variance) and thus improve
+the "$N$" situtation described above (this also mentioned top of pg 271 as a great advantage of multi level modeling)
+** random effects as errors
+(pg 265)
+
+if we leave the "intercept" in the level 1 model then the distribution of the $\alpha_j$ is centered around zero (as errors / deviations from the mean across all) so instead of
+$y_i = \alpha_{j[i]} + x_1 \beta + \epsilon_i$ and $\alpha_j ~ N(\mu_\alpha, \sigma_\alpha^2)$ we can move $\mu_\alpha$ "down" as a constant term and get
+$y_i = \mu_\alpha + x_1 \beta + \eta_{j[i]} + \epsilon_i$ with $\eta_{j} ~ N(0, \sigma_\alpha^2)$. This latter expression can be interpreted as a classical regression with correlated errors i.e.
+$y_i = X_i \beta + \epsilon_i^\text{all}$ where $\Sigma$ for the $\epsilon$ is no longer diagonal because it is $\eta_{j[i]} + \epsilon_i$ and the $\eta$ term is the same within groups so it induces correlation.
+In particular the variance for the same $i$ is $\sigma_y^2 + \sigma_\alpha^2$, for two different groups the covariance is zero, and for the same group it is $\sigma_\alpha^2$ (so note here how the ICC pops up in the correlation structure when $j[i] = j[k]$)
+* chapter 16
+radon example pooled fit vs unpooled fit vs lme4 fit vs stan fit
+
+#+begin_src bash
+  wget http://www.stat.columbia.edu/~gelman/arm/examples/radon/srrs2.dat ~/Downloads/
+#+end_src
+
+#+begin_src conf :tangle ../../stats.stan
+    data {
+        int N;
+        int J;
+
+        real y[N];
+        real x[N];
+        int county[N];
+    }
+
+    parameters {
+        real a[J];
+        real b;
+
+        real mu_a;
+        real<lower=0> sigma_a;
+        real<lower=0> sigma_y;
+    }
+
+    model {
+        for (i in 1:N) {
+            y[i] ~ normal(a[county[i]] + b * x[i], sigma_y);
+        }
+
+        for (j in 1:J) {
+            a[j] ~ normal(mu_a, sigma_a);
+        }
+
+        mu_a ~ normal(0, 100);
+        sigma_a ~ uniform(0, 100);
+    }
+#+end_src
+
+#+begin_src R
+  library(lme4)
+  library(rstan)
+  library(shinystan)
+  rstan_options(auto_write = TRUE)
+  options('mc.cores' = 4)
+  options('browser' = 'firefox')
+
+  srrs2 <- fread("~/Downloads/srrs2.dat")
+
+  ## for minnesota save log(radon) to y, basement dummy as x, county to 1-85 factor
+  mn <- srrs2[state == 'MN']
+  mn[, y := log(ifelse(activity == 0, .1, activity))]
+  mn[, x := floor]
+  mn[, cnty := match(county, unique(county))]
+  mn[, c("county", "cnty") := .(cnty, county)]
+
+  lm.pooled <- mn[, lm(y ~ x)]
+  lm.unpooled <- mn[, lm(y ~ x + factor(county) - 1)]
+  er.fit <- mn[, lmer(y ~ x + (1 | county))]
+  ml.fit <- stan(file='~/development/stats/stats.stan', data = list(N=nrow(mn), J=mn[, uniqueN(county)], y=mn$y, x=mn$x, county=mn$county))
+  x <- data.table(name = names(m[1:86, 5]),
+                  nobs = c(mn[, .N, by = county]$N, nrow(mn)),
+                  ## means
+                  mu.poo = c(rep(coef(lm.pooled)[1], 85), coef(lm.pooled)[2]),
+                  mu.unp = coef(lm.unpooled)[c(2:86, 1)],
+                  mu.lme = c(coef(er.fit)$county[, 1], fixef(er.fit)[2]),
+                  mu.mlm = get_posterior_mean(ml.fit)[1:86, 5],
+                  ## standard errors
+                  se.poo = c(rep(summary(lm.pooled)$coefficients[, 'Std. Error'][1], 85), summary(lm.pooled)$coefficients[, 'Std. Error'][2]),
+                  se.unp = summary(lm.unpooled)$coefficients[c(2:86, 1), 'Std. Error'],
+                  se.lme = c(sqrt(drop(attr(ranef(er.fit)$county, "postVar"))), sqrt(diag(vcov(er.fit)))[2]),
+                  se.mlm = summary(ml.fit)$summary[1:86, 'sd'])
+#+end_src
+
+* errata
+pg 203 bottom paragraph "necessarily necessarily"
+pg 219 last R code snippet is the reciprocal of what it should be dividing to get the wald estimate
+pg 221 rearranged equation 10.7 denominator should be $\gamma_1$ not $\gamma_2$ (and the sentence immediately after also mentions $\gamma_2$ but should be $\gamma_1$)
+pg 259 first lmer model is described as starting with the no pooling model "y ~ x", but that is the complete pooling model
+pg 284 $\beta_{2,j[i]}$ should read $\theta_{2,j[i]}$
+pg 308 /ncol/ should be /nrow/ in the R code snippet
+pg 316 $\beta_k ~ N(X_j \beta, \sigma_\beta^2)$ missing $\gamma_\beta$
+pg 359 r code snippet adds $b[s]$ but should be zero since comparing case where house has no basement

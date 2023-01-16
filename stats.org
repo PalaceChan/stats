@@ -1,6 +1,6 @@
 :PROPERTIES:
 #+TITLE: stats
-#+PROPERTY: header-args:R :session *R:stats:* :eval never-export :exports code
+#+PROPERTY: header-args:R :session *R:stats* :eval never-export :exports code
 #+PROPERTY: header-args:python :session *Python[stats]* :eval never-export :exports code
 #+EXPORT_EXCLUDE_TAGS: noexport
 #+OPTIONS: num:nil
@@ -24,7 +24,6 @@ https://methodenlehre.github.io/intro-to-rstats/index.html (came up when browsin
 Kutner et al. Applied Linear Statistical Models (anova book recommendation from https://stats.stackexchange.com/a/20455/6355 on anova)
 * covariance
 https://stats.stackexchange.com/questions/140080/why-does-inversion-of-a-covariance-matrix-yield-partial-correlations-between-ran
-
 * classical linear regression
 ** confounding / omitted variables
 page 170 darm gelman text presents argument:
@@ -83,6 +82,11 @@ https://grodri.github.io/glms/notes/c3.pdf (page 47) also includes mention of st
 https://www.jstor.org/stable/2240841 (pregibon 1981 referenced above too)
 
 pearson residuals (usual difference in observed minus fitted standardized by estimated error of fitted i.e. standardized residuals in classical lm) - in grouped data normally distributed so one can sum of squares them and compare to chi-squared
+
+* stan
+[[https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started][rstan]] and [[https://github.com/stan-dev/shinystan][shinystan]] ~install.packages(c('rstan', 'shinystan'))~
+[[https://github.com/stan-dev/stan-mode][emacs stan pkgs]]
+[[https://mc-stan.org/users/documentation/][stand docs]]
 
 * wald test
 https://grodri.github.io/glms/notes/c2.pdf (page 10)

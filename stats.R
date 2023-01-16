@@ -1,39 +1,37 @@
-# 1 var case
-N <- 300
-x1 <- data.table(x=rnorm(N), u=rnorm(N))
-x2 <- data.table(x=rnorm(N), u=rnorm(N))
-x1[, `:=`(y1=2*x + rnorm(N, sd=0.25), y2=3*x + rnorm(N, sd=1), y3=5*x + rnorm(N, sd=3))]
-x2[, `:=`(y1=2*x + rnorm(N, sd=0.25), y2=3*x + rnorm(N, sd=1), y3=5*x + rnorm(N, sd=3))]
-models <- list(x1[, lm(y1 ~ x - 1)], x1[, lm(y2 ~ x - 1)])
-x2[, `:=`(m1.hat=predict(models[[1]], newdata = x2), m2.hat=predict(models[[2]], newdata = x2))]
-cor(x2)
+y <- as.matrix(read.table('https://raw.github.com/wiki/stan-dev/rstan/rats.txt', header = TRUE))
+x <- c(8, 15, 22, 29, 36)
+xbar <- mean(x)
+N <- nrow(y)
+T <- ncol(y)
+rats_fit <- stan(file='~/development/stats/stats.stan', data = list(N=N, T=T, y=y, x=x, xbar=xbar))
 
-# 1 var and intercept case
-N <- 300
-x1 <- data.table(x=rnorm(N), u=rnorm(N))
-x2 <- data.table(x=rnorm(N), u=rnorm(N))
-x1[, `:=`(y1=2 + 2*x + rnorm(N, sd=0.25), y2=3 + 3*x + rnorm(N, sd=1), y3=5 + 5*x + rnorm(N, sd=3))]
-x2[, `:=`(y1=2 + 2*x + rnorm(N, sd=0.25), y2=3 + 3*x + rnorm(N, sd=1), y3=5 + 5*x + rnorm(N, sd=3))]
-models <- list(x1[, lm(y1 ~ x)], x1[, lm(y2 ~ x)])
-x2[, `:=`(m1.hat=predict(models[[1]], newdata = x2), m2.hat=predict(models[[2]], newdata = x2))]
-cor(x2)
+library(rstan)
+rstan_options(auto_write = TRUE)
+options('mc.cores' = 4)
 
-# 2 slopes case
-x1[, `:=`(y1=2*x + 7*u + rnorm(N, sd=0.25), y2=3*x + 4*u + rnorm(N, sd=1), y3=5*x + 1*u + rnorm(N, sd=3))]
-x2[, `:=`(y1=2*x + 7*u + rnorm(N, sd=0.25), y2=3*x + 4*u + rnorm(N, sd=1), y3=5*x + 1*u + rnorm(N, sd=3))]
-models <- list(x1[, lm(y1 ~ x + u - 1)], x1[, lm(y2 ~ x + u - 1)])
-x2[, `:=`(m1.hat=predict(models[[1]], newdata = x2), m2.hat=predict(models[[2]], newdata = x2))]
-cor(x2)
+library(shinystan)
+options('browser' = 'firefox')
+launch_shinystan(rats_fit)
 
-# 2 var orthogonal to each other
-N <- 4000
-M1 <- pracma::randortho(N)
-M2 <- pracma::randortho(N)
-x1 <- data.table(u1=M1[,1], u2=M1[,2])
-x2 <- data.table(u1=M2[,1], u2=M2[,2])
-x1[, `:=`(y1=2*u1 + 7*u2 + rnorm(N, sd=0.05), y2=3*u1 + 4*u2 + rnorm(N, sd=1), y3=5*u1 + 1*u2 + rnorm(N, sd=3))]
-x2[, `:=`(y1=2*u1 + 7*u2 + rnorm(N, sd=0.05), y2=3*u1 + 4*u2 + rnorm(N, sd=1), y3=5*u1 + 1*u2 + rnorm(N, sd=3))]
-models <- list(x1[, lm(y1 ~ u1 + u2 - 1)], x1[, lm(y2 ~ u1 + u2 - 1)])
-x1[, `:=`(m1.hat=predict(models[[1]]), m2.hat=predict(models[[2]]))]
-x2[, `:=`(m1.hat=predict(models[[1]], newdata = x2), m2.hat=predict(models[[2]], newdata = x2))]
-cor(x2)
+library(lme4)
+srrs2 <- fread("~/Downloads/srrs2.dat")
+mn <- srrs2[state == 'MN']
+mn[, y := log(ifelse(activity == 0, .1, activity))]
+mn[, x := floor]
+mn[, cnty := match(county, unique(county))]
+mn[, c("county", "cnty") := .(cnty, county)]
+
+lm.pooled <- mn[, lm(y ~ x)]
+lm.unpooled <- mn[, lm(y ~ x + factor(county) - 1)]
+er.fit <- mn[, lmer(y ~ x + (1 | county))]
+ml.fit <- stan(file='~/development/stats/stats.stan', data = list(N=nrow(mn), J=mn[, uniqueN(county)], y=mn$y, x=mn$x, county=mn$county))
+x <- data.table(name = names(m[1:86, 5]),
+                nobs = c(mn[, .N, by = county]$N, nrow(mn)),
+                mu.poo = c(rep(coef(lm.pooled)[1], 85), coef(lm.pooled)[2]),
+                mu.unp = coef(lm.unpooled)[c(2:86, 1)],
+                mu.lme = c(coef(er.fit)$county[, 1], fixef(er.fit)[2]),
+                mu.mlm = get_posterior_mean(ml.fit)[1:86, 5],
+                se.poo = c(rep(summary(lm.pooled)$coefficients[, 'Std. Error'][1], 85), summary(lm.pooled)$coefficients[, 'Std. Error'][2]),
+                se.unp = summary(lm.unpooled)$coefficients[c(2:86, 1), 'Std. Error'],
+                se.lme = c(sqrt(drop(attr(ranef(er.fit)$county, "postVar"))), sqrt(diag(vcov(er.fit)))[2]),
+                se.mlm = summary(ml.fit)$summary[1:86, 'sd'])
