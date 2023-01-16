@@ -4,6 +4,7 @@ data {
 
     real y[N];
     real x[N];
+    real u[J];
     int county[N];
 }
 
@@ -11,7 +12,8 @@ parameters {
     real a[J];
     real b;
 
-    real mu_a;
+    real g0;
+    real g1;
     real<lower=0> sigma_a;
     real<lower=0> sigma_y;
 }
@@ -22,9 +24,6 @@ model {
     }
 
     for (j in 1:J) {
-        a[j] ~ normal(mu_a, sigma_a);
+        a[j] ~ normal(g0 + g1 * u[j], sigma_a);
     }
-
-    mu_a ~ normal(0, 100);
-    sigma_a ~ uniform(0, 100);
 }

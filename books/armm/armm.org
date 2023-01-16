@@ -172,48 +172,45 @@ radon example pooled fit vs unpooled fit vs lme4 fit vs stan fit
 
 #+begin_src bash
   wget http://www.stat.columbia.edu/~gelman/arm/examples/radon/srrs2.dat ~/Downloads/
+  wget http://www.stat.columbia.edu/~gelman/arm/examples/radon/cty.dat ~/Downloads/
 #+end_src
 
 #+begin_src conf :tangle ../../stats.stan
-    data {
-        int N;
-        int J;
+  data {
+      int N;
+      int J;
 
-        real y[N];
-        real x[N];
-        int county[N];
-    }
+      real y[N];
+      real x[N];
+      int county[N];
+  }
 
-    parameters {
-        real a[J];
-        real b;
+  parameters {
+      real a[J];
+      real b;
 
-        real mu_a;
-        real<lower=0> sigma_a;
-        real<lower=0> sigma_y;
-    }
+      real mu_a;
+      real<lower=0> sigma_a;
+      real<lower=0> sigma_y;
+  }
 
-    model {
-        for (i in 1:N) {
-            y[i] ~ normal(a[county[i]] + b * x[i], sigma_y);
-        }
+  model {
+      for (i in 1:N) {
+          y[i] ~ normal(a[county[i]] + b * x[i], sigma_y);
+      }
 
-        for (j in 1:J) {
-            a[j] ~ normal(mu_a, sigma_a);
-        }
-
-        mu_a ~ normal(0, 100);
-        sigma_a ~ uniform(0, 100);
-    }
+      for (j in 1:J) {
+          a[j] ~ normal(mu_a, sigma_a);
+      }
+  }
 #+end_src
 
+#+caption: varying intercept vs full pooled
 #+begin_src R
   library(lme4)
   library(rstan)
-  library(shinystan)
   rstan_options(auto_write = TRUE)
   options('mc.cores' = 4)
-  options('browser' = 'firefox')
 
   srrs2 <- fread("~/Downloads/srrs2.dat")
 
@@ -242,6 +239,68 @@ radon example pooled fit vs unpooled fit vs lme4 fit vs stan fit
                   se.mlm = summary(ml.fit)$summary[1:86, 'sd'])
 #+end_src
 
+with group level predictor unpooled classical model cannot fit anymore and if the between group variance is much bigger than individual variance the complete pooling lm loses out:
+#+caption: using county level log uranium and varying the params
+#+begin_src conf :tangle ../../stats.stan
+  data {
+      int N;
+      int J;
+
+      real y[N];
+      real x[N];
+      real u[J];
+      int county[N];
+  }
+
+  parameters {
+      real a[J];
+      real b;
+
+      real g0;
+      real g1;
+      real<lower=0> sigma_a;
+      real<lower=0> sigma_y;
+  }
+
+  model {
+      for (i in 1:N) {
+          y[i] ~ normal(a[county[i]] + b * x[i], sigma_y);
+      }
+
+      for (j in 1:J) {
+          a[j] ~ normal(g0 + g1 * u[j], sigma_a);
+      }
+  }
+#+end_src
+
+#+begin_src R
+  cty <- fread("~/Downloads/cty.dat")
+  srrs2.fips <- mn[, stfips*1000 + cntyfips]
+  usa.fips <- cty[, stfips*1000 + ctfips]
+  usa.rows <- match(unique(srrs2.fips), usa.fips)
+  uranium <- cty[usa.rows,"Uppm"]
+  mn[, u := log(uranium[county])]
+
+  N <- nrow(mn)
+  J <- mn[, uniqueN(county)]
+  b.true <- -0.7
+  g0.true <- 1.5
+  g1.true <- 0.7
+  sigma.y.true <- 0.08
+  sigma.a.true <- 0.9 # sigma.a.true >> sigma.y.true multilevel model recovers a.true far better
+  a.true <- rnorm(J, g0.true + g1.true*log(uranium$Uppm), sigma.a.true)
+  y.fake <- rnorm(N, a.true[mn$county] + b.true*mn$x, sigma.y.true)
+  lm.pooled <- mn[, lm(y.fake ~ x + u)]
+  er.fit <- mn[, lmer(y.fake ~ x + u + (1 | county))]
+  ml.fit <- stan(file='~/development/stats/stats.stan', data = list(N=N, J=J, y=y.fake, x=mn$x, u=log(uranium$Uppm), county=mn$county))
+  x <- data.table(name = rownames(get_posterior_mean(ml.fit))[1:86],
+                  nobs = c(mn[, .N, by = county]$N, nrow(mn)),
+                  mu.tru = c(a.true, b.true),
+                  mu.poo = c(coef(lm.pooled)[1] + coef(lm.pooled)[3]*log(uranium$Uppm), coef(lm.pooled)[2]),
+                  mu.lme = c(fixef(er.fit)[1] + fixef(er.fit)[3]*log(uranium$Uppm) + ranef(er.fit)$county[,1], fixef(er.fit)[2]),
+                  mu.mlm = get_posterior_mean(ml.fit)[1:86, 5])
+  x[1:85, .(mu.tru, mu.poo, mu.lme, mu.lme)] |> cor()
+#+end_src
 * errata
 pg 203 bottom paragraph "necessarily necessarily"
 pg 219 last R code snippet is the reciprocal of what it should be dividing to get the wald estimate
