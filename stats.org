@@ -24,6 +24,10 @@ https://methodenlehre.github.io/intro-to-rstats/index.html (came up when browsin
 Kutner et al. Applied Linear Statistical Models (anova book recommendation from https://stats.stackexchange.com/a/20455/6355 on anova)
 * covariance
 https://stats.stackexchange.com/questions/140080/why-does-inversion-of-a-covariance-matrix-yield-partial-correlations-between-ran
+** simulating vectors with a given covariance
+can be done with the [[https://mlisi.xyz/post/simulating-correlated-variables-with-the-cholesky-factorization/][cholesky factor]] of the correlation matrix. Take independent random $N(0,1)$ vectors $Z$, i.e. $Z^tZ = I$.
+Now suppose one wants them to have correlation $C$ and standard deviation $D = \text{diag}[\sigma_0, \ldots]$ so covariance $DCD$.
+We can factor $C$ into $L^tL = C$. Then $X^t = D L^t Z^t$ are vectors with the desired covariance. To check: $X^t X = (DL^tZ^t )(ZLD) = DCD = \Sigma$.
 * classical linear regression
 ** confounding / omitted variables
 page 170 darm gelman text presents argument:
