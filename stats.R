@@ -1,10 +1,104 @@
 library(data.table)
+library(lme4)
 library(rstan)
+library(purrr)
 rstan_options(auto_write = TRUE)
 options('mc.cores' = 4)
-## library(shinystan)
-## options('browser' = 'firefox')
-library(lme4)
+
+fitMods <- function(N, J, sy, sa, b) {
+    set.seed(1)
+    ma <- 0
+    a <- rnorm(J, ma, sa)
+    x <- rnorm(N)
+    j <- c(1:J, sample(1:J, N-J, replace = T, runif(J))) # group membership ensure at least one of each
+    y <- a[j] + b*x + rnorm(N, sd = sy)
+
+    ## estimate each 'a' as a single pooling
+    m0 <- lm(y ~ x)
+
+    ## estimate each 'a' by itself
+    m1 <- lm(y ~ factor(j) + x - 1)
+
+    ## estimate two level model with lme4
+    m2 <- lmer(y ~ x + (1 | j))
+
+    ## estimate two level model with stan
+    spec <- "
+data {
+    int N;
+    int J;
+    real y[N];
+    real x[N];
+    int grp[N];
+}
+parameters {
+    real a[J];
+    real b;
+    real ma;
+    real<lower=0> sa;
+    real<lower=0> sy;
+}
+model {
+    for (i in 1:N) {
+        y[i] ~ normal(a[grp[i]] + b * x[i], sy);
+    }
+
+    for (j in 1:J) {
+        a[j] ~ normal(ma, sa);
+    }
+}
+"
+    ## m3 <- stan(model_code = spec, data = list(N=N, J=J, y=y, x=x, grp=j), refresh = 0)
+
+    res <- data.table(prm = c(paste0('a', 1:J), 'b', 'sy', 'sa', 'ma'),
+                      obs = c(table(j), rep(N, 4)),
+                      tru = c(a, b, sy, sa, ma),
+                      poo = c(rep(coef(m0)[1], J), coef(m0)[1], summary(m1)$sigma, NA, NA),
+                      unp = c(coef(m1), summary(m1)$sigma, NA, NA),
+                      lme = c(coef(m2)$j[,1], fixef(m2)[2], summary(m2)$sigma, summary(m2)$varcor$j, fixef(m2)[1]))
+                      ## stn = get_posterior_mean(m3)[, 'mean-all chains'][c(1:(J+1), J+4, J+3, J+2)])
+    ## list(res=res, perf=cor(res[1:J, .(tru, unp, lme, stn)])[1,])
+    ## list(res=res, perf=cor(res[1:J, .(tru, unp, lme)])[1,])
+    tot.err <- sum(res$tru[1:J]^2)
+    list(res=res,
+         perf=c(poo=sum((res$tru[1:J] - res$poo[1:J])^2), unp=sum((res$tru[1:J] - res$unp[1:J])^2), lme=sum((res$tru[1:J] - res$lme[1:J])^2))/tot.err)
+}
+
+xl <- lapply(seq(0.01, 2, by=.05), function(v) fitMods(1000, 10, 1, v, 1.7)) # lme does better with the smaller values
+xl <- lapply(c(2, 5, 10, 30, 100, 200, 500), function(v) fitMods(1000, v, 2, 1, 1.7)) # lme does better with more groups
+do.call(rbind, map(xl, 'perf'))
+
+N <- 1e4
+J <- 100
+B <- 50
+W.x <- matrix(rnorm(10*B), ncol=B)
+S.x <- t(W.x) %*% W.x + diag(runif(B, 0.1, 1))
+X <- MASS::mvrnorm(N, mu = rep(0, B), Sigma = S.x, empirical = T)
+j <- sort(c(1:J, sample(1:J, N-J, replace = T, runif(J)))) # group membership ensure at least one of each
+mu.b <- rnorm(B)
+W.b <- matrix(rnorm(10*B), ncol=B)
+S.b <- t(W.b) %*% W.b + diag(runif(B, 0.1, 1))
+C.b <- diag(1/sqrt(diag(S.b))) %*% S.b %*% diag(1/sqrt(diag(S.b)))
+b <- MASS::mvrnorm(max(J,B), mu = mu.b, Sigma = C.b, empirical = T) # j-th row are the true betas for the j-th group
+y <- do.call(rbind, lapply(1:J, function(grp) X[grp == j,] %*% b[grp,]))
+jf <- factor(j, ordered = F)
+dat <- cbind(y, jf, as.data.frame(X))
+## h(model.matrix(y ~ X:jf - 1, data = dat))
+m1 <- lm(y ~ X:jf - 1, data = dat)
+m2 <- lmer(y ~ 0+X + (0+X | jf))
+m1.cc <- matrix(nrow = J, ncol = B)
+for (i in 1:J) {
+    for (k in 1:B) {
+        m1.cc[i,k] <- coef(m1)[paste0('X',k,':jf',i)]
+    }
+}
+
+b[1:J,]
+m1.cc
+coef(m2)$jf
+summary(as.numeric(m1.cc - b[1:J,]))
+summary(as.numeric(as.matrix(coef(m2)$jf) - b[1:J,]))
+
 srrs2 <- fread("~/Downloads/srrs2.dat")
 mn <- srrs2[state == 'MN']
 mn[, y := log(ifelse(activity == 0, .1, activity))]

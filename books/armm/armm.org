@@ -168,7 +168,7 @@ $y_i = \mu_\alpha + x_1 \beta + \eta_{j[i]} + \epsilon_i$ with $\eta_{j} ~ N(0, 
 $y_i = X_i \beta + \epsilon_i^\text{all}$ where $\Sigma$ for the $\epsilon$ is no longer diagonal because it is $\eta_{j[i]} + \epsilon_i$ and the $\eta$ term is the same within groups so it induces correlation.
 In particular the variance for the same $i$ is $\sigma_y^2 + \sigma_\alpha^2$, for two different groups the covariance is zero, and for the same group it is $\sigma_\alpha^2$ (so note here how the ICC pops up in the correlation structure when $j[i] = j[k]$)
 * chapter 16
-radon example pooled fit vs unpooled fit vs lme4 fit vs stan fit
+** radon example pooled fit vs unpooled fit vs lme4 fit vs stan fit
 
 #+begin_src bash
   wget http://www.stat.columbia.edu/~gelman/arm/examples/radon/srrs2.dat ~/Downloads/
@@ -239,7 +239,8 @@ radon example pooled fit vs unpooled fit vs lme4 fit vs stan fit
                   se.mlm = summary(ml.fit)$summary[1:86, 'sd'])
 #+end_src
 
-with group level predictor unpooled classical model cannot fit anymore and if the between group variance is much bigger than individual variance the complete pooling lm loses out:
+with group level predictor unpooled classical model cannot fit anymore and if the between group variance is much bigger than individual variance the complete pooling lm loses out
+
 #+caption: using county level log uranium and varying the params
 #+begin_src conf :tangle ../../stats.stan
   data {
@@ -301,6 +302,54 @@ with group level predictor unpooled classical model cannot fit anymore and if th
                   mu.mlm = get_posterior_mean(ml.fit)[1:86, 5])
   x[1:85, .(mu.tru, mu.poo, mu.lme, mu.lme)] |> cor()
 #+end_src
+
+** exploring with purely random data
+suppose one has the model
+
+$$y_{i} = a_{j[i]} + b x_i + \epsilon_i, \epsilon_i ~ N(0, \sigma_y)$$
+$$a_j ~ N(\mu_a, \sigma_a)$$
+
+multilevel model can estimate the above and would work with more precision than an unpooled classical model if variation between groups is very small / there are many groups (impliying some sparse groups)
+#+begin_src R
+  library(data.table)
+  library(lme4)
+  library(rstan)
+  library(purrr)
+  rstan_options(auto_write = TRUE)
+  options('mc.cores' = 4)
+
+  fitMods <- function(N, J, sy, sa, b) {
+      set.seed(1)
+      ma <- 0
+      a <- rnorm(J, ma, sa)
+      x <- rnorm(N)
+      j <- c(1:J, sample(1:J, N-J, replace = T, runif(J))) # group membership ensure at least one of each
+      y <- a[j] + b*x + rnorm(N, sd = sy)
+
+      ## estimate each 'a' as a single pooling
+      m0 <- lm(y ~ x)
+
+      ## estimate each 'a' by itself
+      m1 <- lm(y ~ factor(j) + x - 1)
+
+      ## estimate two level model with lme4
+      m2 <- lmer(y ~ x + (1 | j))
+
+      res <- data.table(prm = c(paste0('a', 1:J), 'b', 'sy', 'sa', 'ma'),
+                        obs = c(table(j), rep(N, 4)),
+                        tru = c(a, b, sy, sa, ma),
+                        poo = c(rep(coef(m0)[1], J), coef(m0)[1], summary(m1)$sigma, NA, NA),
+                        unp = c(coef(m1), summary(m1)$sigma, NA, NA),
+                        lme = c(coef(m2)$j[,1], fixef(m2)[2], summary(m2)$sigma, summary(m2)$varcor$j, fixef(m2)[1]))
+      list(res=res, perf=c(poo=sum((res$tru[1:J] - res$poo[1:J])^2),
+                           unp=sum((res$tru[1:J] - res$unp[1:J])^2),
+                           lme=sum((res$tru[1:J] - res$lme[1:J])^2))/sum(res$tru[1:J]^2))
+  }
+
+  xl <- lapply(seq(0.01, 2, by=.05), function(v) fitMods(1000, 10, 1, v, 1.7)) # lme does better with the smaller values
+  xl <- lapply(c(2, 5, 10, 30, 100, 200, 500), function(v) fitMods(1000, v, 2, 1, 1.7)) # lme does better with more groups
+#+end_src
+
 * errata
 pg 203 bottom paragraph "necessarily necessarily"
 pg 219 last R code snippet is the reciprocal of what it should be dividing to get the wald estimate
@@ -310,3 +359,6 @@ pg 284 $\beta_{2,j[i]}$ should read $\theta_{2,j[i]}$
 pg 308 /ncol/ should be /nrow/ in the R code snippet
 pg 316 $\beta_k ~ N(X_j \beta, \sigma_\beta^2)$ missing $\gamma_\beta$
 pg 359 r code snippet adds $b[s]$ but should be zero since comparing case where house has no basement
+pg 393 $\beta_2$ at the top should be $\beta_1$
+pg 402 in the code snippet at the top with the b.update function ~lm.0 <- lm(y.temp ~ X)~ need to remove intercept in the ~lm~?
+pg 405 ~mle$convergence~ and ~mle$par~ in the R code near the top when accessing whether ~mle~ converged and what the optimal params were?

@@ -91,7 +91,6 @@ pearson residuals (usual difference in observed minus fitted standardized by est
 [[https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started][rstan]] and [[https://github.com/stan-dev/shinystan][shinystan]] ~install.packages(c('rstan', 'shinystan'))~
 [[https://github.com/stan-dev/stan-mode][emacs stan pkgs]]
 [[https://mc-stan.org/users/documentation/][stand docs]]
-
 * wald test
 https://grodri.github.io/glms/notes/c2.pdf (page 10)
 a joint t-test, whereas $$t = \frac{\hat{\beta}_j}{\sqrt(\text{var}(\hat{\beta}_j))}$$ with $n - p$ d.f. the wald test takes multiple betas and is  $$W = \hat{\beta}' \text{var}^{-1}(\hat{\beta}) \hat{\beta}$$
