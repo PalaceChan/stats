@@ -362,3 +362,6 @@ pg 359 r code snippet adds $b[s]$ but should be zero since comparing case where 
 pg 393 $\beta_2$ at the top should be $\beta_1$
 pg 402 in the code snippet at the top with the b.update function ~lm.0 <- lm(y.temp ~ X)~ need to remove intercept in the ~lm~?
 pg 405 ~mle$convergence~ and ~mle$par~ in the R code near the top when accessing whether ~mle~ converged and what the optimal params were?
+pg 481 description for figure 21.9 says "can decrease" when think should read "can increase"
+pg 497 top section $sigma_\beta$ and $s_\beta$ should be $sigma_\alpha$ and $s_\alpha$
+pg 510 here where it reads "bundling the outcome $y$ and encouragement $T$", should read "treatment $T$" (encouragement being the $z$ IV)
