@@ -149,3 +149,24 @@ x <- data.table(name = rownames(get_posterior_mean(ml.fit))[1:86],
                 mu.lme = c(fixef(er.fit)[1] + fixef(er.fit)[3]*log(uranium$Uppm) + ranef(er.fit)$county[,1], fixef(er.fit)[2]),
                 mu.mlm = get_posterior_mean(ml.fit)[1:86, 5])
 x[1:85, .(mu.tru, mu.poo, mu.lme, mu.lme)] |> cor()
+
+
+## are factor returns sensitive to the weighting scheme used in a sub-sampling? doesnt seem so...
+n <- 1e5
+m <- MASS::mvrnorm(n, rep(0,2), matrix(c(1,.28,.28,1), 2,2), empirical = T)
+r <- m[,2]
+# want cov(ca,r) / var(ca) = 1, implies c = cov(a,r)/var(a)
+a <- m[,1] * cov(m[,1],r) / var(m[,1])
+## cov(a,r)/var(a)
+## fr <- replicate(10, { s <- sample(1:n, n/10); cov(a[s],r[s])/var(a[s])}) # all fine
+## fr <- replicate(10, { cand <- which(abs(a)>2*sd(a)); s <- sample(cand, n/25); cov(a[s],r[s])/var(a[s])}) # all fine too
+fr <- replicate(10, { # all fine weighting proportional to 'a' as well...
+    s <- sample(1:n, n/10)
+    w <- abs(a[s])^3
+    cov(a[s]*w,r[s])/cov(a[s]*w, a[s])
+    ## coef(lm(r[s] ~ a[s] - 1, weights = w))[1]
+})
+c(mean(fr) - sd(fr)/sqrt(10), mean(fr), mean(fr) + sd(fr)/sqrt(10))
+
+## x <- replicate(30, { x <- rnorm(1e5); y <- rnorm(1e5); coef(lm(y ~ x - 1))[1] - cov(x,y)/cov(x, x) })
+## y <- replicate(30, { x <- rnorm(1e5); y <- rnorm(1e5); w <- rexp(1e5); coef(lm(y ~ x - 1, weights = w))[1] - cov(x*w,y)/cov(x*w, x) })

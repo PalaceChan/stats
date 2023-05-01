@@ -28,6 +28,9 @@ https://stats.stackexchange.com/questions/140080/why-does-inversion-of-a-covaria
 can be done with the [[https://mlisi.xyz/post/simulating-correlated-variables-with-the-cholesky-factorization/][cholesky factor]] of the correlation matrix. Take independent random $N(0,1)$ vectors $Z$, i.e. $Z^tZ = I$.
 Now suppose one wants them to have correlation $C$ and standard deviation $D = \text{diag}[\sigma_0, \ldots]$ so covariance $DCD$.
 We can factor $C$ into $L^tL = C$. Then $X^t = D L^t Z^t$ are vectors with the desired covariance. To check: $X^t X = (DL^tZ^t )(ZLD) = DCD = \Sigma$.
+
+in R can also just use the MASS package mvrnorm function e.g. ~m <- MASS::mvrnorm(n, rep(0,2), matrix(c(1,.28,.28,1), 2,2), empirical = T)~ would yield two column vectors
+of length n with correlation 0.28 and sd 1 (matrix arg is the covariance desired)
 * classical linear regression
 ** confounding / omitted variables
 page 170 darm gelman text presents argument:
@@ -79,6 +82,8 @@ $$F = \frac{(\text{RSS}(X1) - \text{RSS}(X_1 + X_2))/p_2}{\text{RSS}(X_1+X_2)/(n
 with $p_2$ and $n-p$ d.f. which is the reduction in RSS per degree of freedom spent over the noise in the model ($\hat{\sigma^2}$ estimated from the larger one)
 
 for linear models this is identical to the wald test
+** weighted least squares
+just $(X^TWX) \beta = X^TWY$ with unweighted case a diagonal $W$ of ones, whence in R ~cov(x*w,y)/cov(x*w, x)~ instead of the usual ~cov(x,y)/cov(x,x)~
 * general linear models
 ** diagnostics
 https://bookdown.org/ltupper/340f21_notes/deviance-and-residuals.html
